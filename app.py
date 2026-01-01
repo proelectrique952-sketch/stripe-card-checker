@@ -66,8 +66,24 @@ def create_payment_method(stripe_pk, card, exp_month, exp_year, cvv):
         "key": stripe_pk,
         "_stripe_version": "2024-06-20",
     }
-    r = requests.post("https://api.stripe.com/v1/payment_methods", headers=headers, data=data)
-    return r.json().get("id")
+    response = requests.post("https://api.stripe.com/v1/payment_methods", headers=headers, data=data)
+    
+    # Added JSON response handling
+    if response.headers.get("Content-Type", "").startswith("application/json"):
+        try:
+            json_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            print("Response is not valid JSON")
+            return None
+        else:
+            if "id" in json_data:
+                return json_data["id"]
+            else:
+                # Get the error message safely
+                str_message = json_data.get("error", {}).get("message", "Unknown error")
+                print(f"Payment failed: {str_message}")
+                return None
+    return None
 
 def confirm_setup(session, pm_id, nonce):
     headers = {
@@ -167,7 +183,7 @@ def check_card_api(card_input):
             "gateway": "Stripe Auth v5"
         }
 
-@app.route('/ch', methods=['GET'])
+@app.route('/check', methods=['GET'])
 def check_card():
     card_input = request.args.get('card')
     
