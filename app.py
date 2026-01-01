@@ -74,16 +74,16 @@ def create_payment_method(stripe_pk, card, exp_month, exp_year, cvv):
             json_data = response.json()
         except requests.exceptions.JSONDecodeError:
             print("Response is not valid JSON")
-            return None
+            return None, "Response is not valid JSON"
         else:
             if "id" in json_data:
-                return json_data["id"]
+                return json_data["id"], None
             else:
                 # Get the error message safely
-                str_message = json_data.get("error", {}).get("message", "Unknown error")
-                print(f"Payment failed: {str_message}")
-                return None
-    return None
+                error_message = json_data.get("error", {}).get("message", "Unknown error")
+                print(f"Payment failed: {error_message}")
+                return None, error_message
+    return None, "Invalid response from Stripe"
 
 def confirm_setup(session, pm_id, nonce):
     headers = {
@@ -109,13 +109,14 @@ def check_card_api(card_input):
         session = requests.Session()
         session = register_user(session)
         stripe_pk, nonce = get_stripe_key_and_nonce(session)
-        pm_id = create_payment_method(stripe_pk, card, month, year, cvv)
+        pm_id, pm_error = create_payment_method(stripe_pk, card, month, year, cvv)
         
         if not pm_id:
             return {
                 "status": "declined",
-                "message": "Failed to create Payment Method",
-                "gateway": "Stripe Auth v5"
+                "message": pm_error or "Failed to create Payment Method",
+                "gateway": "Stripe Auth v5",
+                "card_last4": card[-4:]
             }
         
         result = confirm_setup(session, pm_id, nonce)
@@ -151,10 +152,6 @@ def check_card_api(card_input):
             # 3️⃣ Global message fallback
             if not decline_message:
                 decline_message = rjson.get("message", "Your card was declined")
-
-        ` # 3️⃣ Global message fallback
-            if not decline_message:
-                decline_message = (str_message)        
                 
             return {
                 "status": "declined",
@@ -187,7 +184,7 @@ def check_card_api(card_input):
             "gateway": "Stripe Auth v5"
         }
 
-@app.route('/check', methods=['GET'])
+@app.route('/ch', methods=['GET'])
 def check_card():
     card_input = request.args.get('card')
     
@@ -226,9 +223,9 @@ def batch_check():
     
     return jsonify({
         "total": len(results),
-        "approved": sum(1 for r in results if r['status'] == 'approved'),
-        "declined": sum(1 for r in results if r['status'] == 'declined'),
-        "error": sum(1 for r in results if r['status'] == 'error'),
+        "approved": sum(1 for r in results if r.get('status') == 'approved'),
+        "declined": sum(1 for r in results if r.get('status') == 'declined'),
+        "error": sum(1 for r in results if r.get('status') == 'error'),
         "results": results
     })
 
