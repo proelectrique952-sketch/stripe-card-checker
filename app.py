@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, Response
 import requests
 import re
+import os
 import json
 import random
 from faker import Faker
@@ -610,9 +611,4 @@ if __name__ == '__main__':
     📝 Example: http://localhost:5000/ch?card=4242424242424242|12|2025|123
     """)
     
-    app.run(
-        debug=True,
-        host='0.0.0.0',
-        port=5010,
-        threaded=True
-    )
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
