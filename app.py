@@ -1,4 +1,5 @@
 import requests, re, json, random
+import os
 from faker import Faker
 from bs4 import BeautifulSoup
 from flask import Flask, request, jsonify
