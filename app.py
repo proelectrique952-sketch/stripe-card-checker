@@ -151,7 +151,11 @@ def check_card_api(card_input):
             # 3️⃣ Global message fallback
             if not decline_message:
                 decline_message = rjson.get("message", "Your card was declined")
-            
+
+        ` # 3️⃣ Global message fallback
+            if not decline_message:
+                decline_message = (str_message)        
+                
             return {
                 "status": "declined",
                 "message": decline_message,
