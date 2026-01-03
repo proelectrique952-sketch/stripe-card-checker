@@ -129,8 +129,8 @@ def check_card_api(card_input):
             # APPROVED
             if rjson.get("success") is True and status == "succeeded":
                 return {
-                    "status": "approved",
-                    "message": "Add payment successful",
+                    "status": "APPROVED ✅",
+                    "message": "Payment successfully added ✅🔥",
                     "gateway": "Stripe Auth v5",
                     "details": {
                         "setup_intent": data.get("id", "N/A"),
@@ -154,7 +154,7 @@ def check_card_api(card_input):
                 decline_message = rjson.get("message", "Your card was declined")
                 
             return {
-                "status": "declined",
+                "status": "DECLINED ❌",
                 "message": decline_message,
                 "gateway": "Stripe Auth v5",
                 "details": {
