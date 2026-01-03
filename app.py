@@ -190,7 +190,7 @@ def check_card():
     
     if not card_input:
         return jsonify({
-            "status": "error",
+            "status": "ERROR 🚨",
             "message": "Card parameter is required. Format: cc|mm|yy|cvv",
             "gateway": "Stripe Auth v5"
         }), 400
@@ -281,21 +281,21 @@ def home():
         <p><span class="example">card_number|exp_month|exp_year|cvv</span></p>
         
         <h2>🎯 Example:</h2>
-        <code>/ch?card=4242424242424242|12|25|123</code>
+        <code>/ch?card=4242424242424242|12|28|123</code>
         
         <h2>✅ Test Cards:</h2>
-        <code>4242424242424242|12|25|123</code>
+        <code>4242424242424242|12|28|123</code>
         
         <h2>📊 Response:</h2>
         <pre>
-"status": "approved/declined/error",
+"status": "APPROVED ✅/DECLINED ❌/ERROR 🚨",
 "message": "Detailed message",
 "gateway": "Stripe Auth v5",
 "details": "Additional info (if available)"
         </pre>
         
         <h2>⚡ Usage:</h2>
-        <code>curl "http://localhost:5000/ch?card=4242424242424242|12|25|123"</code>
+        <code>curl "http://localhost:5000/ch?card=4242424242424242|12|28|123"</code>
         
         <h2>❓ Help:</h2>
         <p>Send GET request to <span class="example">/ch</span> with card parameter</p>
